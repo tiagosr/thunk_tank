@@ -46,6 +46,6 @@ some_library_set_return_callback(thunked_return_callback); // awww yeahhhh
 
 Should you find this code useful, I wouldn't mind a little shoutout on your commit message or on twitter. Something like this:
 ```
-My project was saved from infinite headaches by @tiagosr's thunk_thank. Thanks!
+My project was saved from infinite headaches by @tiagosr's thunk_tank. Thanks!
 ```
 would be much appreciated =)
