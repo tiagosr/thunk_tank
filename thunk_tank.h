@@ -122,7 +122,7 @@ private:
             memcpy(bytes, _bytes, 64);
         }
 #endif
-#elif defined(__i386__)||defined(_X86_)||defined(_
+#elif defined(__i386__)||defined(_X86_)
 #if  defined(_WIN32)||(__WIN32__)
         
 #else
