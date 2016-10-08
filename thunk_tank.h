@@ -6,7 +6,7 @@
 //
 // (c)2016 @tiagosr
 //
-// released under the ZLIB license
+// released under the MIT license
 
 #pragma once
 
