@@ -6,7 +6,7 @@
 //
 // (c)2016 @tiagosr
 //
-// released under the ZLIB license
+// released under the MIT license
 
 #pragma once
 
@@ -90,8 +90,8 @@ private:
                 0x49, 0xb8, // r9
                 0x49, 0xb9 // r8
             };
-            void *call = (void*)std::addressof(thunk_tank::inner_call);
             if(int_ptr_args_count::value < 6) {
+                void *call = (void*)std::addressof(thunk_tank::inner_call);
                 uint8_t _bytes = {
                     0x48, 0x29, 0x24, 0x25, 0x20, 0x00, 0x00, 0x00, // subq %rsp, 0x20 (pad stack with 32 bytes
                     movabsq_reg_indices[int_ptr_args_count::value*2],
@@ -109,9 +109,39 @@ private:
                 };
                 memcpy(bytes, _bytes, 64);
             } else {
-                uint8_t bytes[64] = {
-                    
-                }
+                void *call = (void*)std::addressof(thunk_tank::inner_call_tf_pad7);
+                uint8_t _bytes[64] = {
+                    0x58, // pop %rax -> save return address
+                    0x41, 0x51, // push %r9 -> push 6th argument to the stack
+                    0x41, 0x50, // push %r8 -> push 5th argument
+                    0x56, // push %rsi -> push 4th argument
+                    0x57, // push %rdi -> push 3rd argument
+                    0x51, // push %rcx -> push 2nd argument
+                    0x52, // push %rdx -> push 1st argument
+                    0x50, // push %rax -> push return address to the vacant spots in the stack
+                    0x50, // push %rax -> align to 16-byte address
+                    0x48, 0xbf,
+                    byte_of(thunk, 0), byte_of(thunk, 1), byte_of(thunk, 2), byte_of(thunk, 3),
+                    byte_of(thunk, 4), byte_of(thunk, 5), byte_of(thunk, 6), byte_of(thunk, 7),
+                    // movabsq #*thunk, %rdx //
+                    0x48, 0xb8,
+                    byte_of(call, 0), byte_of(call, 1), byte_of(call, 2), byte_of(call, 3),
+                    byte_of(call, 4), byte_of(call, 5), byte_of(call, 6), byte_of(call, 7),
+                    // movabsq #thunk_tank::inner_call_tf_pad7, %rax
+                    0xff, 0xd0, // call *%rax
+                    0x5f, // pop %rdi -> pop return address to temp register
+                    // (an add #64, %rsp would do, but would be more bytes than the next 7 insns)
+                    0x5e, // pop %rsi -> remove moved argument
+                    0x5e, // pop %rsi -> remove moved argument
+                    0x5e, // pop %rsi -> remove moved argument
+                    0x5e, // pop %rsi -> remove moved argument
+                    0x5e, // pop %rsi -> remove moved argument
+                    0x5e, // pop %rsi -> remove moved argument
+                    0x5e, // pop %rsi -> remove moved argument
+                    0x57, // push %rdi -> push back return address
+                    0xc3 // ret
+                };
+                memcpy(bytes, _bytes, 64);
             }
         }
 #else
@@ -166,7 +196,7 @@ private:
                     // movabsq #thunk_tank::inner_call_tf_pad7, %rax
                     0xff, 0xd0, // call *%rax
                     0x5f, // pop %rdi -> pop return address to temp register
-                    // (an add #48, %rsp would do, but would be more bytes than the next 6 insns)
+                    // (an add #64, %rsp would do, but would be more bytes than the next 7 insns)
                     0x5e, // pop %rsi -> remove moved argument
                     0x5e, // pop %rsi -> remove moved argument
                     0x5e, // pop %rsi -> remove moved argument
