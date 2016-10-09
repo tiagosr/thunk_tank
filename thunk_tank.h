@@ -130,7 +130,7 @@ private:
                     // movabsq #thunk_tank::inner_call_tf_pad7, %rax
                     0xff, 0xd0, // call *%rax
                     0x5f, // pop %rdi -> pop return address to temp register
-                    // (an add #64, %rsp would do, but would be more bytes than the next 7 insns)
+                    // (an add #56, %rsp would do, but would be more bytes than the next 7 insns)
                     0x5e, // pop %rsi -> remove moved argument
                     0x5e, // pop %rsi -> remove moved argument
                     0x5e, // pop %rsi -> remove moved argument
@@ -189,14 +189,14 @@ private:
                     0x48, 0xbf,
                     byte_of(thunk, 0), byte_of(thunk, 1), byte_of(thunk, 2), byte_of(thunk, 3),
                     byte_of(thunk, 4), byte_of(thunk, 5), byte_of(thunk, 6), byte_of(thunk, 7),
-                    // movabsq #*thunk, %rdx //
+                    // movabsq #*thunk, %rdx
                     0x48, 0xb8,
                     byte_of(call, 0), byte_of(call, 1), byte_of(call, 2), byte_of(call, 3),
                     byte_of(call, 4), byte_of(call, 5), byte_of(call, 6), byte_of(call, 7),
                     // movabsq #thunk_tank::inner_call_tf_pad7, %rax
                     0xff, 0xd0, // call *%rax
                     0x5f, // pop %rdi -> pop return address to temp register
-                    // (an add #64, %rsp would do, but would be more bytes than the next 7 insns)
+                    // (an add #56, %rsp would do, but would be more bytes than the next 7 insns)
                     0x5e, // pop %rsi -> remove moved argument
                     0x5e, // pop %rsi -> remove moved argument
                     0x5e, // pop %rsi -> remove moved argument
@@ -214,12 +214,44 @@ private:
 #elif defined(__i386__)||defined(_X86_)
 #if  defined(_WIN32)||(__WIN32__)
         
+        // __cdecl ABI: every argument is passed through the stack, return is eax:edx
+        uint8_t bytes[32];
+        thunk_patch(thunk_tank* thunk) {
+            void *call = (void*)std::addressof(thunk_tank::inner_call);
+            uint8_t _bytes[32] = {
+
+            };
+            memcpy(bytes, _bytes, 32);
+        }
 #else
-// SystemV ABI
-        
+        // SystemV ABI: every argument is passed through the stack, return is eax
+        uint8_t bytes[32];
+        thunk_patch(thunk_tank* thunk) {
+            void *call = (void*)std::addressof(thunk_tank::inner_call);
+            uint8_t _bytes[32] = {
+                
+            };
+            memcpy(bytes, _bytes, 32);
+        }
 #endif
 #elif defined(__ARM_ARCH_7__)
+        uint8_t bytes[32];
+        thunk_patch(thunk_tank* thunk) {
+            void *call = (void*)std::addressof(thunk_tank::inner_call);
+            uint8_t _bytes[32] = {
+                
+            };
+            memcpy(bytes, _bytes, 32);
+        }
 #elif defined(__ARM_ARCH_6__)
+        uint8_t bytes[32];
+        thunk_patch(thunk_tank* thunk) {
+            void *call = (void*)std::addressof(thunk_tank::inner_call);
+            uint8_t _bytes[32] = {
+                
+            };
+            memcpy(bytes, _bytes, 32);
+        }
 #endif
     } __attribute__((__packed__));
 
@@ -228,6 +260,8 @@ private:
     
     void setup() {
         void *allocpatch = NULL;
+
+#if defined(__APPLE__) || defined(__LINUX__)
          // alloc inside a page boundary
         //int ret = posix_memalign(&allocpatch, getpagesize(), sizeof(thunk_patch));
         // mprotect() will trap on subsequent allocations if we allocate less than
@@ -235,15 +269,19 @@ private:
         int ret = posix_memalign(&allocpatch, getpagesize(), getpagesize());
         if(ret == 0) {
             patch = new(allocpatch)thunk_patch(this);
-            int err = mprotect(patch, sizeof(thunk_patch), PROT_READ|PROT_EXEC);
+            int err = mprotect(patch, getpagesize(), PROT_READ|PROT_EXEC);
             if(err) {
                 free(allocpatch);
                 patch = NULL;
             }
         }
+#elif defined(_WIN32) || defined(__WIN32__) || defined(_WIN64) || defined(__WIN64__)
+        
+#endif
     }
     void unwind() {
         if(patch) {
+            mprotect(patch, getpagesize(), PROT_READ|PROT_WRITE);
             patch->~thunk_patch();
             free(patch);
         }
@@ -254,6 +292,11 @@ private:
         return thunk->_callback(args...);
     }
     static __cdecl Ret inner_call_tf(thunk_tank* thunk, ArgTypes... args) {
+        return thunk->_callback(args...);
+    }
+    static __cdecl Ret inner_call_tf_pad5(thunk_tank* thunk,
+                                          void*, void*, void*, void*, void*,
+                                          ArgTypes... args) {
         return thunk->_callback(args...);
     }
     static __cdecl Ret inner_call_tf_pad7(thunk_tank* thunk,
