@@ -2,7 +2,7 @@
 Have a stubborn library that only provides _their own data_ and doesn't leave you any place to put a pointer to ```this``` or anything similar? Not even a context pointer you could put as a key into a hash table and dispatch from there? You're welcome.
 This is a header-only C++11 function thunk type for use with C/C++/whatever APIs that don't provide user data or context pointers.
 
-Currently the type supports X86-64 on the SystemV ABI, with Windows support being worked on. On the short term, I plan on supporting ARMv6 and ARMv7 calling conventions too.
+Currently the type supports X86-64 on the SystemV ABI, with Windows support being worked on. On the short term, I plan on supporting X86, ARMv6 and ARMv7 calling conventions too.
 
 ## Example
 
