@@ -28,7 +28,7 @@ thunk_tank<void(int)> my_thunk([&](int sensor_value) {
     // even return data
     obj->do_something_with_sensor_value(sensor_value);
 });
-thunk_tank<int(void)> my_return_thunk(char[&]() {
+thunk_tank<char(void)> my_return_thunk(char[&]() {
     // have to return something to that horrible horrible library? here you go.
     return obj->my_char_value;
 });
