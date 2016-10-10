@@ -17,14 +17,36 @@
 #include <cstdint>
 #include <cstdlib>
 
+#if defined(__APPLE__) || defined(__LINUX__)
 #include <unistd.h>
 #include <sys/mman.h>
+#elif defined(_WIN32) || defined(__WIN32__)
 
-#if defined(__x86_64__) || defined(__ARM_ARCH_7__)
+#include <windows.h>
+
+#endif
+
+#if defined(__x86_64__) || defined(__arm64__)
 #define REG_SIZE 8
 #else
 #define REG_SIZE 4
 #endif
+
+template <typename ...>
+class thunk_tank_is_vararg {};
+
+template <typename Ret, typename... ArgTypes>
+class thunk_tank_is_vararg<Ret(ArgTypes...)> {
+public:
+    static constexpr bool value = false;
+};
+
+template <typename Ret, typename... ArgTypes>
+class thunk_tank_is_vararg<Ret(ArgTypes..., ...)> {
+public:
+    static constexpr bool value = true;
+};
+
 
 template <typename ...>
 class thunk_tank {};
@@ -78,7 +100,7 @@ private:
     
     struct thunk_patch {
 #if defined(__x86_64__)
-#if  defined(_WIN64) // why does windows have to do this differently?
+# if defined(_WIN64) // why does windows have to do this differently?
         uint8_t bytes[64];
         
         thunk_patch(ofxThunk* thunk) {
@@ -144,7 +166,7 @@ private:
                 memcpy(bytes, _bytes, 64);
             }
         }
-#else
+# else
         uint8_t bytes[64];
         thunk_patch(thunk_tank* thunk) {
             if(int_ptr_args_count::value < 6) {
@@ -210,47 +232,87 @@ private:
                 memcpy(bytes, _bytes, 64);
             }
         }
-#endif
+# endif
 #elif defined(__i386__)||defined(_X86_)
-#if  defined(_WIN32)||(__WIN32__)
+# if defined(_WIN32)||(__WIN32__)
         
         // __cdecl ABI: every argument is passed through the stack, return is eax:edx
         uint8_t bytes[32];
         thunk_patch(thunk_tank* thunk) {
-            void *call = (void*)std::addressof(thunk_tank::inner_call);
+            void *call = (void*)std::addressof(thunk_tank::inner_call_static_pad);
             uint8_t _bytes[32] = {
-
+                0x8b, 0x0d, // mov *thunk, %ecx
+                byte_of(thunk, 0), byte_of(thunk, 1), byte_of(thunk, 2), byte_of(thunk, 3),
+                0x51, // push %ecx
+                0x8b, 0x0d, // mov *call, %ecx
+                byte_of(call, 0), byte_of(call, 1), byte_of(call, 2), byte_of(call, 3),
+                0xff, 0xd1, // call %ecx
+                0x5b, // pop %ebx - remove the thunk pointer
+                0xc3, // ret
             };
             memcpy(bytes, _bytes, 32);
         }
-#else
+# else
         // SystemV ABI: every argument is passed through the stack, return is eax
         uint8_t bytes[32];
         thunk_patch(thunk_tank* thunk) {
-            void *call = (void*)std::addressof(thunk_tank::inner_call);
+            void *call = (void*)std::addressof(thunk_tank::inner_call_static_pad);
             uint8_t _bytes[32] = {
-                
+                0x8b, 0x0d, // mov *thunk, %ecx
+                byte_of(thunk, 0), byte_of(thunk, 1), byte_of(thunk, 2), byte_of(thunk, 3),
+                0x51, // push %ecx
+                0x8b, 0x0d, // mov *call, %ecx
+                byte_of(call, 0), byte_of(call, 1), byte_of(call, 2), byte_of(call, 3),
+                0xff, 0xd1, // call %ecx
+                0x5b, // pop %ebx - remove the thunk pointer
+                0xc3, // ret
             };
             memcpy(bytes, _bytes, 32);
         }
-#endif
-#elif defined(__ARM_ARCH_7__)
-        uint8_t bytes[32];
+# endif
+#elif defined(__arm64__)
+        uint8_t bytes[128];
         thunk_patch(thunk_tank* thunk) {
-            void *call = (void*)std::addressof(thunk_tank::inner_call);
-            uint8_t _bytes[32] = {
+            void *call = (void*)std::addressof(thunk_tank::inner_call_tf_pad5);
+            uint8_t _bytes[128] = {
                 
             };
-            memcpy(bytes, _bytes, 32);
+            memcpy(bytes, _bytes, 128);
+        }
+
+#elif defined(__ARM_ARCH_7__)
+        uint8_t bytes[40];
+        thunk_patch(thunk_tank* thunk) {
+            void *call = (void*)std::addressof(thunk_tank::inner_call_tf_pad5);
+            uint32_t _bytes[10] = {
+                0xe92d400f, // push {r0, r1, r2, r3, lr} - move registers out of the way
+                0xe59f0010, // ldr r0, [thunk]
+                0xe59f1010, // ldr r1, [call]
+                0xe12fff31, // blx r1 - call thunk
+                0xe8bd400e, // pop {r1, r2, r3, lr}
+                0xe49d1004, // ldr r1, [sp], #4
+                0xe12fff1e, // bx lr - return to caller
+                (uint32_t)(void*)thunk, // [thunk]
+                (uint32_t)call, // [call]
+            };
+            memcpy(bytes, _bytes, 40);
         }
 #elif defined(__ARM_ARCH_6__)
-        uint8_t bytes[32];
+        uint8_t bytes[40];
         thunk_patch(thunk_tank* thunk) {
             void *call = (void*)std::addressof(thunk_tank::inner_call);
-            uint8_t _bytes[32] = {
-                
+            uint32_t _bytes[10] = {
+                0xe92d400f, // push {r0, r1, r2, r3, lr} - move registers out of the way
+                0xe59f0010, // ldr r0, [thunk]
+                0xe59f1010, // ldr r1, [call]
+                0xebfffffe, // bl r1 - call thunk
+                0xe8bd400e, // pop {r1, r2, r3, lr}
+                0xe49d1004, // ldr r1, [sp], #4
+                0xeafffffe, // b lr - return to caller
+                (uint32_t)(void*)thunk, // [thunk]
+                (uint32_t)call, // [call]
             };
-            memcpy(bytes, _bytes, 32);
+            memcpy(bytes, _bytes, 40);
         }
 #endif
     } __attribute__((__packed__));
@@ -259,7 +321,7 @@ private:
     thunk_patch *patch;
     
     void setup() {
-        void *allocpatch = NULL;
+        void *allocpatch = nullptr;
 
 #if defined(__APPLE__) || defined(__LINUX__)
          // alloc inside a page boundary
@@ -276,14 +338,24 @@ private:
             }
         }
 #elif defined(_WIN32) || defined(__WIN32__) || defined(_WIN64) || defined(__WIN64__)
-        
+        allocpatch = VirtualAlloc(NULL, sizeof(thunk_patch), MEM_RESERVE|MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        if(allocpage) {
+            patch = new(allocpatch)thunk_patch(this);
+            FlushInstructionCache(GetCurrentProcess(), allocpatch, sizeof(thunk_patch));
+        }
 #endif
     }
     void unwind() {
         if(patch) {
+#if defined(__APPLE__) || defined(__LINUX__)
             mprotect(patch, getpagesize(), PROT_READ|PROT_WRITE);
             patch->~thunk_patch();
             free(patch);
+            patch = nullptr;
+#elif defined(_WIN32) || defined(__WIN32__) || defined(_WIN64) || defined(__WIN64__)
+            VirtualFree((void*)patch, sizeof(thunk_patch), MEM_DECOMMIT);
+            patch = nullptr;
+#endif
         }
     }
     
@@ -304,6 +376,11 @@ private:
                                           // pad with 7 arguments to remove x86-64 arguments
                                           // from registers and hide the saved return address
                                           ArgTypes... args) {
+        return thunk->_callback(args...);
+    }
+    static __cdecl Ret inner_call_static_pad(thunk_tank* thunk, void*,
+                                             // the unused argument is the return address
+                                             ArgTypes... args) {
         return thunk->_callback(args...);
     }
 public:
